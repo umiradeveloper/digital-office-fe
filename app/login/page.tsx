@@ -5,6 +5,8 @@ import { LogIn } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { ErrorAlert, Field, UmiraLogo } from '@/components/ui';
 
+// Tombol akun demo hanya untuk lingkungan uji (NEXT_PUBLIC_SHOW_DEMO=true); disembunyikan di produksi.
+const SHOW_DEMO = process.env.NEXT_PUBLIC_SHOW_DEMO === 'true';
 const DEMO = [
   { email: 'staff.keu@digital-office.local', name: 'Rina — Staff', note: 'Buat request & dokumen' },
   { email: 'lead.keu@digital-office.local', name: 'Budi — Team Lead', note: 'Approver L1' },
@@ -68,7 +70,7 @@ function LoginInner() {
         <button className="btn primary lg block" disabled={busy || !email || !password || emailInvalid}>
           {busy ? <span className="spinner" /> : <LogIn />} Masuk
         </button>
-        <div className="stack sm">
+        {SHOW_DEMO && <div className="stack sm">
           <span className="small muted">Akun demo (kata sandi <span className="num ink2">Password123!</span>)</span>
           <div className="demo-accounts">
             {DEMO.map((d) => (
@@ -77,7 +79,7 @@ function LoginInner() {
               </button>
             ))}
           </div>
-        </div>
+        </div>}
       </form>
     </div>
   );

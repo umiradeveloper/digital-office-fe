@@ -1,33 +1,42 @@
 'use client';
 import { useState } from 'react';
-import { Check, Forward, X } from 'lucide-react';
+import { Check, Forward, KeyRound, X } from 'lucide-react';
 import { post } from '@/lib/api';
 import { ErrorAlert, Field, Modal } from './ui';
 import { UserPicker, type UserLite } from './user-picker';
 
 export type DecisionKind = 'approve' | 'reject' | 'delegate';
 
-/** Approve / Reject (wajib alasan) / Delegate (pilih pengganti) — FR-APR-04. */
-export function DecideModal({ instanceId, kind, refCode, title, onClose, onDone, excludeIds = [] }: {
+/**
+ * Approve / Reject (wajib alasan) / Delegate (pilih pengganti) — FR-APR-04.
+ * `naskah` diisi bila request adalah naskah dinas: menyetujui = membubuhkan QR paraf/tanda tangan → wajib kata sandi.
+ */
+export function DecideModal({ instanceId, kind, refCode, title, onClose, onDone, excludeIds = [], naskah }: {
   instanceId: string; kind: DecisionKind | null; refCode: string; title: string; onClose: () => void; onDone: (k: DecisionKind) => void; excludeIds?: string[];
+  naskah?: { role: 'paraf' | 'sign' | null; number?: string | null } | null;
 }) {
   const [comment, setComment] = useState('');
+  const [password, setPassword] = useState('');
   const [to, setTo] = useState<UserLite | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   if (!kind) return null;
+  const signWord = naskah?.role === 'sign' ? 'tanda tangan' : 'paraf';
+  const needPw = !!naskah && kind === 'approve';
   const meta = {
-    approve: { label: 'Setujui', cls: 'ok', icon: <Check />, heading: 'Setujui request' },
+    approve: naskah
+      ? { label: naskah.role === 'sign' ? 'Setujui & tanda tangani' : 'Setujui & paraf', cls: 'ok', icon: <KeyRound />, heading: `Setujui naskah dinas (${signWord})` }
+      : { label: 'Setujui', cls: 'ok', icon: <Check />, heading: 'Setujui request' },
     reject: { label: 'Tolak & kembalikan', cls: 'bad', icon: <X />, heading: 'Tolak request' },
     delegate: { label: 'Delegasikan', cls: 'primary', icon: <Forward />, heading: 'Delegasikan approval' },
   }[kind];
-  const invalid = (kind === 'reject' && comment.trim().length < 5) || (kind === 'delegate' && !to);
+  const invalid = (kind === 'reject' && comment.trim().length < 5) || (kind === 'delegate' && !to) || (needPw && !password);
 
   const submit = async () => {
     setBusy(true); setError(null);
     try {
-      await post(`/approvals/${instanceId}/decide`, { decision: kind, comment: comment.trim() || undefined, toUserId: to?.id });
-      onDone(kind); setComment(''); setTo(null);
+      await post(`/approvals/${instanceId}/decide`, { decision: kind, comment: comment.trim() || undefined, toUserId: to?.id, password: needPw ? password : undefined });
+      onDone(kind); setComment(''); setTo(null); setPassword('');
     } catch (e: any) { setError(e.message); } finally { setBusy(false); }
   };
 
@@ -36,6 +45,12 @@ export function DecideModal({ instanceId, kind, refCode, title, onClose, onDone,
       footer={<><button className="btn ghost" onClick={onClose}>Batal</button><button className={`btn ${meta.cls}`} disabled={busy || invalid} onClick={submit}>{busy ? <span className="spinner" /> : meta.icon}{meta.label}</button></>}>
       <div className="stack">
         <div><span className="ref">{refCode}</span><div style={{ fontWeight: 500 }}>{title}</div></div>
+        {naskah && kind === 'approve' && (
+          <p className="small ink2" style={{ margin: 0 }}>
+            Dengan menyetujui, sistem langsung membubuhkan <b>QR {signWord}</b> atas nama Anda pada naskah{naskah.number ? <> <span className="num">{naskah.number}</span></> : ''}.
+            QR terikat pada isi naskah — bila isi berubah, QR dinyatakan tidak valid.
+          </p>
+        )}
         <ErrorAlert error={error} />
         {kind === 'delegate' && (
           <Field label="Delegasikan ke" required hint="Penerima akan melihat item ini di inbox-nya; keputusannya dicatat atas namanya.">
@@ -47,8 +62,14 @@ export function DecideModal({ instanceId, kind, refCode, title, onClose, onDone,
           error={kind === 'reject' && comment.length > 0 && comment.trim().length < 5 ? 'Tulis alasan minimal 5 karakter' : null}
           hint={kind === 'reject' ? 'Dikirim ke pengaju agar dapat merevisi.' : 'Opsional, tampil di riwayat keputusan.'}
         >
-          <textarea className="textarea" value={comment} onChange={(e) => setComment(e.target.value)} autoFocus={kind !== 'delegate'} maxLength={2000} />
+          <textarea className="textarea" value={comment} onChange={(e) => setComment(e.target.value)} autoFocus={kind !== 'delegate' && !needPw} maxLength={2000} />
         </Field>
+        {needPw && (
+          <Field label="Konfirmasi kata sandi" required hint="Kata sandi yang sama dengan saat masuk.">
+            <input className="input" type="password" autoComplete="current-password" value={password} autoFocus
+              onChange={(e) => setPassword(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !invalid && !busy) submit(); }} />
+          </Field>
+        )}
       </div>
     </Modal>
   );

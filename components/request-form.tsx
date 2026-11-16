@@ -31,7 +31,9 @@ export function RequestForm({ initial, onSubmit, submitLabel = 'Kirim request', 
   const [error, setError] = useState<string | null>(null);
   const [drag, setDrag] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
-  const { data: types } = useApi<any[]>('/request-types');
+  const { data: allTypes } = useApi<any[]>('/request-types');
+  // naskah dinas dibuat dari menu Naskah dinas (tipe kategori "naskah" tidak dipilih di sini)
+  const types = allTypes?.filter((t) => t.category !== 'naskah' || t.id === initial?.typeId);
 
   const type = types?.find((t) => t.id === v.typeId);
   const fields: CustomField[] = type?.customFieldsJson ?? [];

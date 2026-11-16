@@ -2,7 +2,7 @@
 import { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { Check, Forward, Paperclip, Stamp, X, Repeat2 } from 'lucide-react';
+import { Check, Eye, FileSignature, Forward, KeyRound, Paperclip, Stamp, X, Repeat2 } from 'lucide-react';
 import { useApi } from '@/lib/hooks';
 import { get } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -57,6 +57,7 @@ function InboxInner() {
                   <Link href={`/requests/${i.request.id}`} className="ref">{i.request.refCode}</Link>
                   <PriorityBadge priority={i.request.priority} />
                   <span className="badge tone-muted">{i.request.type.name}</span>
+                  {i.eDocument && <span className="badge tone-ion"><FileSignature size={12} />Naskah · {i.eDocument.role === 'sign' ? 'tanda tangan' : 'paraf'}</span>}
                   {i.onBehalfOf && <span className="badge tone-violet">Delegasi dari {i.onBehalfOf.fullName}</span>}
                   {i.slaBreached && <span className="badge tone-bad">SLA {i.level.slaHours} jam terlewati</span>}
                 </div>
@@ -71,7 +72,8 @@ function InboxInner() {
                 {tracks[i.instanceId] && <div style={{ maxWidth: 520 }}><ApprovalTrack compact levels={tracks[i.instanceId].levels} /></div>}
               </div>
               <div className="row wrap" style={{ justifyContent: 'flex-end' }}>
-                <button className="btn ok" onClick={() => setActive({ item: i, kind: 'approve' })}><Check />Setujui</button>
+                {i.eDocument && <Link className="btn" href={`/e-docs/${i.eDocument.id}`}><Eye />Baca naskah</Link>}
+                <button className="btn ok" onClick={() => setActive({ item: i, kind: 'approve' })}>{i.requiresPassword ? <KeyRound /> : <Check />}{i.eDocument ? (i.eDocument.role === 'sign' ? 'Setujui & tanda tangani' : 'Setujui & paraf') : 'Setujui'}</button>
                 <button className="btn bad" onClick={() => setActive({ item: i, kind: 'reject' })}><X />Tolak</button>
                 {i.canDelegate && <button className="btn" onClick={() => setActive({ item: i, kind: 'delegate' })}><Forward />Delegasikan</button>}
               </div>
@@ -80,7 +82,7 @@ function InboxInner() {
       </Panel>
       {active && (
         <DecideModal instanceId={active.item.instanceId} kind={active.kind} refCode={active.item.request.refCode} title={active.item.request.title}
-          excludeIds={[me!.id, active.item.request.requester.id]} onClose={() => setActive(null)}
+          excludeIds={[me!.id, active.item.request.requester.id]} onClose={() => setActive(null)} naskah={active.item.eDocument}
           onDone={(k) => { setActive(null); setTracks({}); toast.ok(k === 'approve' ? 'Disetujui — diteruskan ke level berikutnya bila ada' : k === 'reject' ? 'Ditolak, pengaju diberi tahu' : 'Didelegasikan'); reload(); }} />
       )}
     </>

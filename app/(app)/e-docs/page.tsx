@@ -25,7 +25,7 @@ export default function EDocsPage() {
   return (
     <>
       <div className="page-head">
-        <div><h1>Naskah dinas</h1><p className="lead">Tulis surat, memo, dan berita acara langsung di aplikasi. Setiap paraf dan tanda tangan menghasilkan QR code yang dapat dipindai untuk memeriksa keaslian.</p></div>
+        <div><h1>Naskah dinas</h1><p className="lead">Tulis surat, memo, dan berita acara langsung di aplikasi. Naskah yang dikirim masuk alur approval: setiap approver yang menyetujui langsung membubuhkan QR paraf, level terakhir QR tanda tangan.</p></div>
         <div className="page-actions">{can('EDOC_CREATE') && <Link href="/e-docs/new" className="btn primary"><FilePlus2 />Tulis naskah</Link>}</div>
       </div>
       <Panel flat bodyClass="tight">
@@ -39,11 +39,11 @@ export default function EDocsPage() {
         <ErrorAlert error={error} />
         {loading && !data ? <div className="panel-body"><Loading /></div> : !data?.length ? (
           <Empty icon={<FileSignature />} title={scope === 'tosign' ? 'Tidak ada naskah yang menunggu Anda' : 'Belum ada naskah'} action={can('EDOC_CREATE') && scope !== 'tosign' ? <Link href="/e-docs/new" className="btn primary">Tulis naskah</Link> : undefined}>
-            {scope === 'tosign' ? 'Naskah yang perlu Anda paraf atau tanda tangani akan muncul di sini dan dikirim lewat e-mail.' : 'Pilih template, ketik isinya, tentukan penanda tangan, lalu kirim.'}
+            {scope === 'tosign' ? 'Naskah yang menunggu persetujuan Anda (paraf atau tanda tangan) muncul di sini dan di Inbox approval.' : 'Pilih template, ketik isinya, lalu kirim untuk approval.'}
           </Empty>
         ) : (
           <div className="table-wrap"><table className="tbl">
-            <thead><tr><th>Naskah</th><th>Status</th><th>Paraf & tanda tangan</th><th className="hide-sm">Pembuat</th><th className="hide-sm">Diperbarui</th></tr></thead>
+            <thead><tr><th>Naskah</th><th>Status</th><th>QR paraf & tanda tangan</th><th className="hide-sm">Pembuat</th><th className="hide-sm">Diperbarui</th></tr></thead>
             <tbody>{data.map((d) => {
               const st = EDOC_STATUS[d.status];
               return (
@@ -56,13 +56,15 @@ export default function EDocsPage() {
                   <td><span className={`badge tone-${st.tone}`}><span className="pip" />{st.label}</span></td>
                   <td>
                     <div className="row wrap" style={{ gap: 4 }}>
-                      {d.signers.map((s: any) => (
+                      {(d.request && d.status === 'rejected' ? [] : d.signers).map((s: any) => (
                         <span key={s.order} className={`badge ${s.status === 'signed' ? 'tone-ok' : s.status === 'pending' ? 'tone-ion' : s.status === 'rejected' ? 'tone-bad' : 'tone-muted'}`} style={{ height: 22, fontSize: 11 }} title={`${s.role === 'paraf' ? 'Paraf' : 'Tanda tangan'} — ${s.user.fullName}`}>
                           {s.status === 'signed' ? <Check size={11} /> : s.status === 'rejected' ? <X size={11} /> : <span className="num">{s.order}</span>}
                           {s.user.fullName.split(' ')[0]}{s.role === 'paraf' ? ' (paraf)' : ''}
                         </span>
                       ))}
+                      {d.status === 'signing' && d.request && <span className="badge tone-ion" style={{ height: 22, fontSize: 11 }}>Dalam approval</span>}
                     </div>
+                    {d.request && <span className="tiny muted num">{d.request.refCode}</span>}
                   </td>
                   <td className="hide-sm"><span className="row small"><Avatar name={d.creator.fullName} src={d.creator.photoUrl} size="sm" />{d.creator.fullName}</span></td>
                   <td className="small muted nowrap hide-sm">{fmtDate(d.updatedAt)}</td>

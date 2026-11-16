@@ -3,7 +3,7 @@ import { use, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
-  BellRing, Check, ChevronLeft, CircleDot, Download, Eye, FileClock, Forward, GitBranch, Lock, MessageSquare, Paperclip, PenLine,
+  BellRing, Check, ChevronLeft, CircleDot, Download, Eye, FileClock, FileSignature, Forward, GitBranch, Lock, MessageSquare, Paperclip, PenLine,
   Play, Send, Trash2, X, XCircle,
 } from 'lucide-react';
 import { del, download, patch, post } from '@/lib/api';
@@ -42,6 +42,10 @@ export default function RequestDetail({ params }: { params: Promise<{ id: string
   const p = r.permissions;
   const approval = r.approval;
   const currentLevel = approval?.levels.find((l: any) => l.state === 'current');
+  // naskah dinas: level terakhir = tanda tangan, level sebelumnya = paraf
+  const naskah = r.eDocument
+    ? { number: r.eDocument.number, role: currentLevel ? (approval.levels.indexOf(currentLevel) === approval.levels.length - 1 ? 'sign' : 'paraf') as 'sign' | 'paraf' : null }
+    : null;
   const ds = dueState(r.dueDate, ['closed', 'approved', 'rejected'].includes(r.statusCode));
   const customFields: any[] = r.type.customFieldsJson ?? [];
 
@@ -81,7 +85,7 @@ export default function RequestDetail({ params }: { params: Promise<{ id: string
         <div className="page-actions">
           {p.canDecide && approval && (
             <>
-              <button className="btn ok" onClick={() => setDecide('approve')}><Check />Setujui</button>
+              <button className="btn ok" onClick={() => setDecide('approve')}><Check />{naskah ? (naskah.role === 'sign' ? 'Setujui & tanda tangani' : 'Setujui & paraf') : 'Setujui'}</button>
               <button className="btn bad" onClick={() => setDecide('reject')}><X />Tolak</button>
               {currentLevel?.delegateOn && <button className="btn" onClick={() => setDecide('delegate')}><Forward />Delegasikan</button>}
             </>
@@ -94,6 +98,17 @@ export default function RequestDetail({ params }: { params: Promise<{ id: string
           {p.canDelete && <button className="btn bad" disabled={!!busy} onClick={() => run('d', () => del(`/requests/${id}`), 'Draft dihapus').then((x) => x && router.push('/requests'))}><Trash2 /></button>}
         </div>
       </div>
+
+      {r.eDocument && (
+        <div className="alert info" style={{ marginBottom: 18 }}><FileSignature />
+          <span className="grow">
+            Request ini adalah jalur persetujuan <b>naskah dinas</b> <span className="num">{r.eDocument.number ?? ''}</span> — {r.eDocument.title}.
+            Setiap level yang menyetujui langsung membubuhkan QR {approval?.levels.length > 1 ? 'paraf; level terakhir QR tanda tangan' : 'tanda tangan'}.
+            {r.statusCode === 'rejected' && ' Revisi dan kirim ulang dilakukan dari halaman naskah.'}
+          </span>
+          <Link className="btn sm" href={`/e-docs/${r.eDocument.id}`}><Eye />Buka naskah</Link>
+        </div>
+      )}
 
       {r.statusCode === 'rejected' && (
         <div className="alert bad" style={{ marginBottom: 18 }}><XCircle />
@@ -224,7 +239,7 @@ export default function RequestDetail({ params }: { params: Promise<{ id: string
       </div>
 
       {approval && (
-        <DecideModal instanceId={approval.id} kind={decide} refCode={r.refCode} title={r.title} excludeIds={[me!.id, r.requester.id]}
+        <DecideModal instanceId={approval.id} kind={decide} refCode={r.refCode} title={r.title} excludeIds={[me!.id, r.requester.id]} naskah={naskah}
           onClose={() => setDecide(null)}
           onDone={(k) => { setDecide(null); toast.ok(k === 'approve' ? 'Disetujui' : k === 'reject' ? 'Ditolak, pengaju telah diberi tahu' : 'Didelegasikan'); reload(); }} />
       )}

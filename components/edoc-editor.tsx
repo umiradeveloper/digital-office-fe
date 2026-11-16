@@ -1,40 +1,46 @@
 'use client';
-import { useMemo, useRef, useState } from 'react';
-import { ArrowDown, ArrowUp, Eye, FileText, PenLine, Plus, Save, Send, Trash2 } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Eye, FileText, GitBranch, PenLine, QrCode, Save, Send } from 'lucide-react';
 import { useApi } from '@/lib/hooks';
 import { useAuth } from '@/lib/auth';
-import { fetchBlob } from '@/lib/api';
-import { fillClient, type PaperData, type SignerView } from '@/lib/edoc';
+import { fetchBlob, post } from '@/lib/api';
+import { PRIORITY } from '@/lib/format';
+import { fillClient, paperSigners, type PaperData, type PlannedSigner } from '@/lib/edoc';
 import { ErrorAlert, Field, Panel } from './ui';
-import { UserPicker, type UserLite } from './user-picker';
 import { Paper } from './paper';
 import { EditableBody, EditorToolbar } from './rich-editor';
 
 export interface EDocForm {
   templateId: string; title: string; subject: string; recipient: string; attachmentNote: string; place: string; docDate: string;
-  bodyHtml: string; signers: { user: UserLite; role: 'sign' | 'paraf' }[];
+  bodyHtml: string;
+  /** dipakai untuk request approval "Naskah Dinas" */
+  priority: 'low' | 'med' | 'high' | 'crit'; dueDate: string;
 }
+
+/** Opsi pengiriman ke approval (request tipe Naskah Dinas). */
+export interface SubmitOpts { priority: EDocForm['priority']; dueDate: string | null }
 
 export const emptyEDoc = (): EDocForm => ({
   templateId: '', title: '', subject: '', recipient: '', attachmentNote: '', place: 'Jakarta',
-  docDate: new Date().toISOString().slice(0, 10), bodyHtml: '<p><br></p>', signers: [],
+  docDate: new Date().toISOString().slice(0, 10), bodyHtml: '<p><br></p>', priority: 'med', dueDate: '',
 });
 
 export function edocToForm(d: any): EDocForm {
   return {
     templateId: d.template?.id ?? '', title: d.title, subject: d.subject ?? '', recipient: d.recipient ?? '', attachmentNote: d.attachmentNote ?? '',
     place: d.place ?? 'Jakarta', docDate: d.docDate ? d.docDate.slice(0, 10) : '', bodyHtml: d.bodyHtml,
-    signers: d.signers.map((s: SignerView) => ({ user: { id: s.user.id, fullName: s.user.fullName, position: s.user.position, photoUrl: s.user.photoUrl }, role: s.role })),
+    priority: d.request?.priority ?? 'med', dueDate: d.request?.dueDate ? d.request.dueDate.slice(0, 10) : '',
   };
 }
 
 /**
- * Editor naskah dinas: isian kepala surat & penanda tangan (kiri), kertas A4 yang dapat diketik langsung (kanan).
+ * Editor naskah dinas: isian kepala surat & alur persetujuan (kiri), kertas A4 yang dapat diketik langsung (kanan).
+ * Paraf & tanda tangan mengikuti alur approval request "Naskah Dinas": level awal = QR paraf, level terakhir = QR tanda tangan.
  * `existingId` diisi saat mengubah draft; pratinjau PDF memakai endpoint server.
  */
 export function EDocEditor({ initial, existingId, number, onSave, error: extError }: {
   initial?: EDocForm; existingId?: string; number?: string | null;
-  onSave: (payload: any, submit: boolean) => Promise<void>; error?: string | null;
+  onSave: (payload: any, submit: boolean, opts: SubmitOpts) => Promise<void>; error?: string | null;
 }) {
   const { me } = useAuth();
   const [f, setF] = useState<EDocForm>(initial ?? emptyEDoc());
@@ -45,7 +51,22 @@ export function EDocEditor({ initial, existingId, number, onSave, error: extErro
   const bodyRef = useRef<HTMLDivElement>(null);
   const { data: templates } = useApi<any[]>('/doc-templates');
   const { data: org } = useApi<any>('/e-documents/meta/org');
+  const { data: types } = useApi<any[]>('/request-types');
+  const nskType = types?.find((t) => t.code === 'NSK');
 
+  // pratinjau alur approval yang akan dipakai (berubah menurut prioritas)
+  const [flow, setFlow] = useState<{ name: string | null; levels: { name: string; approvers: { fullName: string }[] }[] } | null>(null);
+  useEffect(() => {
+    if (!nskType) return;
+    let alive = true;
+    post<any>('/approval-flows/preview', { typeId: nskType.id, departmentId: me?.departmentId ?? undefined, priority: f.priority, requesterUserId: me?.id })
+      .then((p) => alive && setFlow({ name: p.flow?.name ?? null, levels: p.levels ?? [] }))
+      .catch(() => alive && setFlow({ name: null, levels: [] }));
+    return () => { alive = false; };
+  }, [nskType?.id, f.priority, me?.id]); // eslint-disable-line
+  const planned: PlannedSigner[] = (flow?.levels ?? []).map((l, i, all) => ({
+    order: i + 1, role: i === all.length - 1 ? 'sign' : 'paraf', levelName: l.name, approverName: l.approvers[0]?.fullName ?? null,
+  }));
   const set = <K extends keyof EDocForm>(k: K, v: EDocForm[K]) => setF((x) => ({ ...x, [k]: v }));
   const applyTemplate = (id: string) => {
     const t = templates?.find((x) => x.id === id);
@@ -58,40 +79,39 @@ export function EDocEditor({ initial, existingId, number, onSave, error: extErro
   const issues = useMemo(() => {
     const e: string[] = [];
     if (f.title.trim().length < 3) e.push('Judul minimal 3 karakter');
-    if (!f.signers.some((s) => s.role === 'sign')) e.push('Tambahkan minimal satu penanda tangan');
+    if (flow && !flow.levels.length) e.push('Belum ada alur approval Naskah Dinas — hubungi admin');
     if (!(bodyRef.current?.innerText ?? f.bodyHtml.replace(/<[^>]+>/g, '')).trim()) e.push('Isi naskah masih kosong');
     return e;
-  }, [f]);
+  }, [f, flow]);
 
   const payload = () => ({
     templateId: f.templateId || undefined, title: f.title.trim(), subject: f.subject, recipient: f.recipient, attachmentNote: f.attachmentNote,
     place: f.place, docDate: f.docDate ? new Date(f.docDate + 'T08:00:00').toISOString() : undefined,
-    bodyHtml: bodyRef.current?.innerHTML ?? f.bodyHtml, signers: f.signers.map((s) => ({ userId: s.user.id, role: s.role })),
+    bodyHtml: bodyRef.current?.innerHTML ?? f.bodyHtml,
   });
+  const opts = (): SubmitOpts => ({ priority: f.priority, dueDate: f.dueDate ? new Date(f.dueDate + 'T17:00:00').toISOString() : null });
 
   const save = async (submit: boolean) => {
     if (submit && issues.length) { setError(issues[0]); return; }
     if (!submit && f.title.trim().length < 3) { setError('Judul minimal 3 karakter'); return; }
     setBusy(submit ? 'send' : 'save'); setError(null);
-    try { await onSave(payload(), submit); } catch (e: any) { setError(e.message); } finally { setBusy(null); }
+    try { await onSave(payload(), submit, opts()); } catch (e: any) { setError(e.message); } finally { setBusy(null); }
   };
 
   const openPdf = async () => {
     if (!existingId) { setError('Simpan draft terlebih dahulu untuk melihat PDF.'); return; }
     setBusy('pdf');
     try {
-      await onSave(payload(), false);
+      await onSave(payload(), false, opts());
       const { blob } = await fetchBlob(`/e-documents/${existingId}/pdf?inline=1`);
       window.open(URL.createObjectURL(blob), '_blank');
     } catch (e: any) { setError(e.message); } finally { setBusy(null); }
   };
 
-  const moveSigner = (i: number, d: number) => setF((x) => { const s = [...x.signers]; const [it] = s.splice(i, 1); s.splice(i + d, 0, it); return { ...x, signers: s }; });
-
   const paperData: PaperData = {
     number: number ?? null, title: f.title, subject: f.subject, recipient: f.recipient, attachmentNote: f.attachmentNote, place: f.place,
     docDate: f.docDate || null, department: me?.department ?? null, org: org ?? null,
-    signers: f.signers.map((s, i) => ({ order: i + 1, role: s.role, status: 'waiting', user: { id: s.user.id, fullName: s.user.fullName, position: s.user.position } })),
+    signers: paperSigners([], planned),
   };
 
   return (
@@ -121,35 +141,42 @@ export function EDocEditor({ initial, existingId, number, onSave, error: extErro
           </div>
         </Panel>
 
-        <Panel title={<span className="row"><PenLine size={17} style={{ color: 'var(--ion)' }} /><h2>Paraf & tanda tangan</h2></span>} sub="Diproses berurutan dari atas ke bawah">
+        <Panel title={<span className="row"><GitBranch size={17} style={{ color: 'var(--ion)' }} /><h2>Alur persetujuan</h2></span>}
+          sub={flow?.name ? <>Alur <b className="ink2">{flow.name}</b> — diatur admin</> : 'Mengikuti alur approval Naskah Dinas'}>
           <div className="stack">
-            {f.signers.length === 0 && <p className="small muted">Belum ada. Tambahkan pemeriksa (paraf) lalu penanda tangan.</p>}
-            {f.signers.map((s, i) => (
-              <div key={s.user.id} className="signer-row">
-                <span className="ord">{i + 1}</span>
-                <span className="truncate small"><b>{s.user.fullName}</b><br /><span className="tiny muted">{s.user.position ?? '—'}</span></span>
-                <select className="select" style={{ height: 34, fontSize: 13 }} value={s.role} onChange={(e) => setF((x) => ({ ...x, signers: x.signers.map((y, k) => (k === i ? { ...y, role: e.target.value as any } : y)) }))} aria-label="Peran">
-                  <option value="paraf">Paraf</option><option value="sign">Tanda tangan</option>
+            <div className="form-grid">
+              <Field label="Prioritas">
+                <select className="select" value={f.priority} onChange={(e) => set('priority', e.target.value as EDocForm['priority'])}>
+                  {(['low', 'med', 'high', 'crit'] as const).map((p) => <option key={p} value={p}>{PRIORITY[p].label}</option>)}
                 </select>
-                <span className="row" style={{ gap: 0 }}>
-                  <button type="button" className="btn ghost sm icon" disabled={i === 0} onClick={() => moveSigner(i, -1)} aria-label="Naikkan"><ArrowUp /></button>
-                  <button type="button" className="btn ghost sm icon" disabled={i === f.signers.length - 1} onClick={() => moveSigner(i, 1)} aria-label="Turunkan"><ArrowDown /></button>
-                  <button type="button" className="btn ghost sm icon" onClick={() => set('signers', f.signers.filter((_, k) => k !== i))} aria-label="Hapus"><Trash2 /></button>
-                </span>
-              </div>
-            ))}
-            {f.signers.length < 10 && (
-              <div className="stack sm">
-                <span className="small muted row" style={{ gap: 6 }}><Plus size={14} />Tambah orang</span>
-                <UserPicker value={null} exclude={f.signers.map((s) => s.user.id)} onChange={(u) => u && set('signers', [...f.signers, { user: u, role: 'sign' }])} placeholder="Cari nama penanda tangan…" />
-              </div>
-            )}
+              </Field>
+              <Field label="Batas waktu"><input className="input" type="date" value={f.dueDate} onChange={(e) => set('dueDate', e.target.value)} /></Field>
+            </div>
+            {!flow ? <span className="small muted">Memuat alur…</span>
+              : !flow.levels.length ? <div className="alert warn"><span>Belum ada alur approval aktif untuk Naskah Dinas. Minta admin mengaturnya di <b>Administrasi → Alur approval</b>.</span></div>
+              : (
+                <div className="sign-steps">
+                  {planned.map((p) => (
+                    <div key={p.order} className="sign-step">
+                      <span className="dot">{p.order}</span>
+                      <div className="small">
+                        <b>{p.levelName}</b> <span className={`badge ${p.role === 'sign' ? 'tone-ion' : 'tone-muted'}`} style={{ marginLeft: 4 }}>{p.role === 'sign' ? 'QR tanda tangan' : 'QR paraf'}</span>
+                        <div className="tiny muted">{p.approverName ?? 'Approver ditentukan saat dikirim'}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            <p className="tiny muted row top" style={{ gap: 6, margin: 0 }}>
+              <QrCode size={14} style={{ flex: 'none', marginTop: 1 }} />
+              <span>Saat dikirim, naskah diberi nomor dan masuk inbox approval sebagai request. Setiap approver yang menyetujui (dengan kata sandi) langsung membubuhkan QR — level terakhir sebagai tanda tangan. PDF final tersimpan otomatis di Dokumen.</span>
+            </p>
           </div>
         </Panel>
 
         <ErrorAlert error={error ?? extError} />
         <div className="stack sm">
-          <button className="btn primary lg block" disabled={!!busy} onClick={() => save(true)}>{busy === 'send' ? <span className="spinner" /> : <Send />}Simpan & kirim untuk ditandatangani</button>
+          <button className="btn primary lg block" disabled={!!busy} onClick={() => save(true)}>{busy === 'send' ? <span className="spinner" /> : <Send />}Simpan & kirim untuk approval</button>
           <div className="row">
             <button className="btn grow" disabled={!!busy} onClick={() => save(false)}>{busy === 'save' ? <span className="spinner" /> : <Save />}Simpan draft</button>
             <button className="btn grow" disabled={!!busy || !existingId} onClick={openPdf} title={existingId ? '' : 'Simpan draft dahulu'}>{busy === 'pdf' ? <span className="spinner" /> : <FileText />}PDF</button>
