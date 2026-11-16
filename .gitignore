@@ -1,0 +1,13 @@
+node_modules
+dist
+.next
+.env
+.env.local
+backend/storage
+*.log
+.DS_Store
+# dump SuperApps (berisi hash password & data pribadi)
+superapps*.sql
+# Flutter
+mobile/build
+mobile/.dart_tool
