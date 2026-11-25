@@ -433,9 +433,14 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13.5px; }
   --p-ink: #111827; --p-muted: #4b5563;
   width: 794px; max-width: 100%; min-height: 1123px; background: #fff; color: var(--p-ink); border-radius: 4px;
   box-shadow: 0 30px 80px -30px rgba(2, 52, 66, 0.3), 0 0 0 1px rgba(255, 255, 255, .06);
-  padding: 46px 64px 40px; font-family: Arial, Helvetica, sans-serif; font-size: 14.5px; line-height: 1.5; position: relative;
-  display: flex; flex-direction: column;
+  /* ruang untuk kop resmi: header ±123px, footer alamat ±169px (A4 794px = 595pt) */
+  padding: 123px 64px 169px; font-family: Arial, Helvetica, sans-serif; font-size: 14.5px; line-height: 1.5; position: relative;
+  display: flex; flex-direction: column; overflow: hidden;
 }
+.paper .kop-l { position: absolute; left: 4.03%; top: 31px; width: 25.35%; height: auto; }
+.paper .kop-r { position: absolute; left: 72.54%; top: 28px; width: 22.93%; height: auto; }
+.paper .kop-f { position: absolute; left: 0; bottom: 0; width: 100%; height: auto; pointer-events: none; }
+.paper .kop-dept { text-align: right; font-size: 12px; color: var(--p-muted); margin: -8px 0 10px; }
 .paper .kop { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-bottom: 10px; border-bottom: 3px solid #075f78; box-shadow: 0 2px 0 #fff, 0 3.5px 0 #9d521f; margin-bottom: 20px; }
 .paper .kop-logo { height: 40px; width: auto; flex: none; }
 .paper .kop-id { text-align: right; }
@@ -470,7 +475,7 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 .paper .parafs .pf { display: flex; gap: 8px; align-items: center; }
 .paper .parafs .pf img, .paper .parafs .pf .box { width: 50px; height: 50px; }
 .paper .parafs .pf .box { border: 1px dashed #9ca3af; }
-.paper .foot { margin-top: 26px; padding-top: 6px; border-top: 1px solid #d1d5db; font-size: 9.5px; color: #6b7280; }
+.paper .foot { margin-top: 26px; font-size: 9.5px; color: #6b7280; position: relative; z-index: 1; }
 .paper .wm { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; font-size: 130px; font-weight: 800; color: rgba(17, 24, 39, .05); transform: rotate(-30deg); }
 
 .rte-bar { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; padding: 8px; border-radius: 14px; background: rgba(240, 245, 247, 0.75); border: 1px solid var(--line-soft); position: sticky; top: 72px; z-index: 5; backdrop-filter: blur(10px); }

@@ -6,7 +6,7 @@ const fmtDT = (d?: string | null) => (d ? new Date(d).toLocaleString('id-ID', { 
 
 /**
  * Kertas A4 naskah dinas — tata letak sama dengan PDF yang dihasilkan server:
- * kop, kepala surat (Nomor/Lampiran/Perihal/Kepada) atau judul, isi, blok tanda tangan QR, footer verifikasi.
+ * kop resmi (header & footer gambar), kepala surat (Nomor/Lampiran/Perihal/Kepada) atau judul, isi, blok tanda tangan QR, footer verifikasi.
  */
 export function Paper({ d, body, draft }: { d: PaperData; body: ReactNode; draft?: boolean }) {
   const letter = !!d.recipient?.trim();
@@ -16,15 +16,11 @@ export function Paper({ d, body, draft }: { d: PaperData; body: ReactNode; draft
     <div className="paper-wrap">
       <article className="paper" aria-label="Pratinjau naskah">
         {draft && <div className="wm" aria-hidden>DRAF</div>}
-        <header className="kop">
-          <img className="kop-logo" src="/brand/umira-logo.png" alt="Umira" />
-          <div className="kop-id">
-            <div className="org">{(d.org?.name ?? 'Nama Organisasi').toUpperCase()}</div>
-            {d.department && <div className="dept">{d.department.name}</div>}
-            {d.org?.address && <div className="addr">{d.org.address}</div>}
-            {d.org?.contact && <div className="addr">{d.org.contact}</div>}
-          </div>
-        </header>
+        {/* Kop surat resmi (template "Kop Surat USG") — posisi & ukuran sama dengan PDF server */}
+        <img className="kop-l" src="/brand/kop/header-left.png" alt="Umira" />
+        <img className="kop-r" src="/brand/kop/header-right.png" alt="Integrated Management System — ISO" />
+        <img className="kop-f" src="/brand/kop/footer.png" alt={d.org?.name ?? 'PT Umira Sinergi Global'} />
+        {d.department && <div className="kop-dept">{d.department.name}</div>}
 
         {letter ? (
           <>
